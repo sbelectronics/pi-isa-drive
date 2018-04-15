@@ -1,4 +1,4 @@
-;; flashbio.asm
+;; pidrive.asm
 ;; Scott M Baker, http://www.smbaker.com/
 ;;
 ;; This is the main file. It includes everything else, installs the int13h
@@ -15,11 +15,7 @@ section .text
 
 ;; Uncomment the following to install as a TSR, for testing of the COM file
 ;; from the dos prompt.
-;; %define DOS_COM_TSR
-
-;; Uncomment the following to enable write to flash. It will use up an
-;; additional 4K of lower memory.
-%define WRITE_SUPPORT
+%define DOS_COM_TSR
 
 %ifdef DOS_COM_TSR
 find_ramvars equ find_ramvars_dos
@@ -41,13 +37,7 @@ main:   PUSHF
         CALL    find_ramvars
         CALL    banner
         MOV     AL, 0
-        CALL    set_page0              ; make sure page0=0 before enabling
-        CALL    enable_page
         CALL    install_int13_handler
-
-%ifdef WRITE_SUPPORT
-        CALL    copy_waitfunc
-%endif
 
         LEA     SI, [msg_int13_1]
         CALL    printstr
@@ -63,13 +53,6 @@ main:   PUSHF
 
         LEA     SI, [msg_installed]
         CALL    printstr
-
-        ;; point banks 1-3 to something other than the bios extension, to
-        ;; prevent bios from detecting the extension again in another bank.
-        MOV     AL, 1
-        CALL    set_page1
-        CALL    set_page2
-        CALL    set_page3
 
         POPF
         JMP     finished
@@ -114,16 +97,12 @@ banner: LEA     SI,[title]
 %include "page.asm"
 %include "util.asm"
 
-%ifdef WRITE_SUPPORT
-%include "wrtflash.asm"
-%endif
-
 %include "int13.asm"
 %include "handlers.asm"
 
 section .data
 
-title   DB      'FlashBios^'
+title   DB      'Pi-Drive^'
 	DB      'by Scott M Baker, http://www.smbaker.com/^$'
 banner_pagereg:
         DB      'page register: $'
