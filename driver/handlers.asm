@@ -143,8 +143,6 @@ AH15h_HandlerForReadDiskDriveSize:
         MOV     CX, [DS:RAMVARS.ret_cx]
         MOV     DX, [DS:RAMVARS.ret_dx]
 
-        MOV     AL, 0                  ; why?
-        MOV     AH, [CS:drive_type]
         JMP     int13_success_return_zero
 
 AH23h_HandlerForSetControllerFeatures:
@@ -177,7 +175,7 @@ call_pi:
 
 .wait_for_pi:
         CMP     AH, [DS:RAMVARS.mbox_left]
-        JNE     .wait_for_pi
+        JE      .wait_for_pi
 
         MOV     AH, [DS:RAMVARS.ax],
 
