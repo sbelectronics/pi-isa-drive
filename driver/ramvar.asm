@@ -11,6 +11,8 @@ find_ramvars_dos:
         RET
 
 struc   RAMVARS
+        .secbuf     resb 512
+
         .int13_old  resb 4
         .last_ah    resb 1
 
@@ -18,7 +20,6 @@ struc   RAMVARS
         .bx         resb 2
         .cx         resb 2
         .dx         resb 2
-        .es         resb 2
         .sec_num    resb 2
 
         .ret_ax     resb 2
@@ -39,9 +40,7 @@ struc   RAMVARS
         .dpt_head_sett   resb 1
         .dpt_motor_st    resb 1
 
-        .junk       resb 474
+        .junk       resb 476
         .mbox_left  resb 1
-        .mbox_right resb 1
-
-        .secbuf     resb 512
+        .mbox_right resb 1                  ; must be at 3FFh
 endstruc

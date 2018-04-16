@@ -33,7 +33,7 @@ AH2h_HandlerForReadDiskSectors:
 .next_sector:
         CALL    call_pi
 
-        MOV     SI, 0400h
+        MOV     SI, RAMVARS.secbuf
         CLD                            ; clear direction flag
         MOV     CX, 0100h              ; copy 512 bytes
         REP     MOVSW
@@ -70,7 +70,7 @@ AH3h_HandlerForWriteDiskSectors:
         MOV     BL, AL                 ; BX = number of sectors to transfer
 
 .next_sector:
-        MOV     SI, 0400h
+        MOV     SI, RAMVARS.secbuf
 
         PUSH    DS                     ; swap ES:DI and DS:SI
         PUSH    ES
