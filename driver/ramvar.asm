@@ -1,92 +1,47 @@
 ;; ramvar.asm
 ;; Scott M Baker, http://www.smbaker.com/
 ;;
-;; RAM variables. When used as a DOS TSR, we grab a kilobyte starting at 7K
-;; under the assumption that the TSR was set to reserve 8K. TSR mode is just
-;; for development, not for real use.
-;;
-;; When run as a BIOS extension, we decrement the available memory count in the
-;; BDA by one page, then install a "signature" so we can find it later. Stole
-;; this idea from xt-ide.
-
-RAMVARS_SIGNATURE equ  "Sb"
-
-steal_ram_bios:
-        ;; The idea comes from XT-IDE. Steal some RAM from the BIOS. Store a
-        ;; signature so we can find it again.
-	PUSH    DS
-	PUSH    AX
-	XOR     AX, AX
-        MOV     DS, AX          ; DS=0, seg of BDA
-	MOV	AX, [DS:413h]   ; number of 1K pages is at 0:413
-%ifdef WRITE_SUPPORT
-        SUB     AX, 5           ; steal 5KB
-%else
-	DEC	AX              ; steal 1KB
-%endif
-	MOV	[DS:413h], AX   ; store the reduced number of pages
-
-	SHL     AX, 1 		; AX holds segment of RAMVARS
-	SHL     AX, 1
-	SHL     AX, 1
-	SHL     AX, 1
-	SHL     AX, 1
-	SHL     AX, 1
-        MOV	DS, AX
-	MOV     WORD [DS:RAMVARS.signature], RAMVARS_SIGNATURE
-
-	POP     AX
-	POP     DS
-        RET
-
-find_ramvars_bios:
-        ;; Stolen from XT-IDE
-        ;; Returns
-        ;;     DS - RamVars Segment
-        PUSH    AX
-        PUSH    DI
-        XOR     AX, AX
-        MOV     DS, AX                         ; DS=0, seg of BDA
-        MOV     DI, [DS:413h]                  ; Load available base memory size in kB
-        SHL     DI, 1
-        SHL     DI, 1
-        SHL     DI, 1
-        SHL     DI, 1
-        SHL     DI, 1
-        SHL     DI, 1
-
-.LoopStolenKBs:
-        mov             ds, di                                  ; EBDA segment to DS
-        add             di, BYTE 64                             ; DI to next stolen kB
-        cmp             WORD [RAMVARS.signature], RAMVARS_SIGNATURE
-        jne             SHORT .LoopStolenKBs    ; Loop until sign found (always found eventually)
-        POP     DI
-        POP     AX
-        ret
-
-steal_ram_dos:
-        ;; For developing in DOS. This is a no-op.
-        RET
+;; RAM variables.
 
 find_ramvars_dos:
-        ;; For developing in DOS. Just assume that RAMVARS are at CS plus
-        ;; 7K. The TSR will have reserved 12K, so that leaves us 5K of ramvars
-        ;; Returns:
-        ;;     DS - RamVars Segment
-        PUSH    AX
-        MOV     AX, CS
-        ADD     AX, (7*1024/16)
-        MOV     DS, AX
-        POP     AX
+        PUSH   AX
+        MOV    AX, [CS:shared_seg]
+        MOV    DS, AX
+        POP    AX
         RET
 
 struc   RAMVARS
-	.signature  resb 2
         .int13_old  resb 4
         .last_ah    resb 1
-%ifdef WRITE_SUPPORT
-        .write_and_wait_func_addr   resb 4
-        .write_and_wait_func   resb 128
-        .writebuf   resb 4096
-%endif
+
+        .ax         resb 2
+        .bx         resb 2
+        .cx         resb 2
+        .dx         resb 2
+        .es         resb 2
+        .sec_num    resb 2
+
+        .ret_ax     resb 2
+        .ret_bx     resb 2
+        .ret_cx     resb 2
+        .ret_dx     resb 2
+
+        .dpt:
+        .dpt_head_unload resb 1             ; unload=32ms, steprate=2ms
+        .dpt_head_load   resb 1             ; unload=4ms, 1=no dma used
+        .dpt_motor_wait  resb 1             ; 0 ticks
+        .dpt_bytes_sec   resb 1             ; 512 bytes per sector
+        .dpt_sec_trk     resb 1             ; 9 sectors per track
+        .dpt_gap         resb 1
+        .dpt_data_len    resb 1
+        .dpt_gap_len_f   resb 1
+        .dpt_fill_byte   resb 1
+        .dpt_head_sett   resb 1
+        .dpt_motor_st    resb 1
+
+        .junk       resb 474
+        .mbox_left  resb 1
+        .mbox_right resb 1
+
+        .secbuf     resb 512
 endstruc

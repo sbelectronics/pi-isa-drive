@@ -5,21 +5,18 @@
 
                 ALIGN   2
 
-romvar_sig      DB      "FLASHBIO_ROM_VARS",0
+romvar_sig      DB      "PIDRIVE_ROM_VARS",0
 
 ;; Hardware information. Where to find the page register and page frame. This
 ;; needs to match the dipswitch settings on the PCB.
 
-default_page_reg   EQU    260h
-default_frame_seg  EQU    0E000h
+default_shared_seg EQU    0E000h
 
 WRITE_PROTECT      EQU    0
 WRITE_IGNORE       EQU    1
 WRITE_WRITE        EQU    2
 
-page_reg     	DW	default_page_reg
-page_enable     DW      default_page_reg + 4
-page_frame_seg	DW      default_frame_seg
+shared_seg	    DW      default_shared_seg
 
 ;; Drive number. This is the drive the int13 handler will intercept.
 ;;   0 = first floppy
