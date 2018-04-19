@@ -25,20 +25,23 @@ AH2h_HandlerForReadDiskSectors:
 
         ; DS is already RAMVARS segment
 
-        MOV     BYTE [DS:RAMVARS.sec_num], 0
+        MOV     WORD [DS:RAMVARS.sec_num], 0
 
         MOV     BH, 0
         MOV     BL, AL                 ; BX = number of sectors to transfer
 
 .next_sector:
+        MOV     AH, 02                 ; in case AH is overwritten, make sure it is set to function number
         CALL    call_pi
 
+        PUSH    CX
         MOV     SI, RAMVARS.secbuf
         CLD                            ; clear direction flag
         MOV     CX, 0100h              ; copy 512 bytes
         REP     MOVSW
+        POP     CX
 
-        INC     BYTE [DS:RAMVARS.sec_num]
+        INC     WORD [DS:RAMVARS.sec_num]
 
         DEC     BX
         JNZ     .next_sector
@@ -72,6 +75,7 @@ AH3h_HandlerForWriteDiskSectors:
 .next_sector:
         MOV     SI, RAMVARS.secbuf
 
+        PUSH    CX
         PUSH    DS                     ; swap ES:DI and DS:SI
         PUSH    ES
         POP     DS
@@ -82,12 +86,14 @@ AH3h_HandlerForWriteDiskSectors:
         MOV     CX, 0100h              ; copy 512 bytes
         REP     MOVSW
 
+        XCHG    SI, DI
         PUSH    DS                     ; swap ES:DI and DS:SI
         PUSH    ES
         POP     DS
         POP     ES
-        XCHG    SI, DI
+        POP     CX
 
+        MOV     AH, 03                 ; in case AH is overwritten, make sure it is set to function number
         CALL    call_pi
 
         INC     BYTE [DS:RAMVARS.sec_num]
@@ -169,6 +175,8 @@ call_pi:
         MOV     [DS:RAMVARS.cx], CX
         MOV     [DS:RAMVARS.dx], DX
 
+        ; call_pi_again is the entrypoint if we want to use the same registers
+call_pi_again:
         MOV     AH, [DS:RAMVARS.mbox_left]
 
         INC     BYTE [DS:RAMVARS.mbox_right]
@@ -177,7 +185,7 @@ call_pi:
         CMP     AH, [DS:RAMVARS.mbox_left]
         JE      .wait_for_pi
 
-        MOV     AH, [DS:RAMVARS.ax],
+        MOV     AH, [DS:RAMVARS.ax + 1],
 
         RET
 

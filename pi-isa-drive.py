@@ -104,8 +104,6 @@ class DriveServicerThread(threading.Thread):
 
         (self.shared_fmt, self.shared_fields, self.shared_length, self.shared_offsets) = asm_struct(SHARED_FMT)
 
-        print self.shared_offsets
-
         self.daemon = True
 
     def config_disk(self, kind):
@@ -134,7 +132,12 @@ class DriveServicerThread(threading.Thread):
     def inc_byte(self,name):
         l = self.mem.read(self.shared_offsets[name])
         l = (l+1) & 0xFF
-        self.mem.write(self.shared_offsets[name], l)
+        # in case the left side has the memory contended, keep trying until we get back what we wrote.
+        while True:
+            self.mem.write(self.shared_offsets[name], l)
+            x = self.mem.read(self.shared_offsets[name])
+            if (x==l):
+                return
 
     def get_word(self,name):
         l = self.mem.read(self.shared_offsets[name])
@@ -146,9 +149,9 @@ class DriveServicerThread(threading.Thread):
         h = self.mem.write(self.shared_offsets[name] +1, value >> 8)
 
     def set_bytes(self, name, bytes, count):
-        offset = self.shared_offsets(name)
+        offset = self.shared_offsets[name]
         for i in range(0, count):
-            self.mem.write(offset+i, bytes[i])
+            self.mem.write(offset+i, ord(bytes[i]))
 
     def dump_request(self):
         print "Request:"
@@ -156,7 +159,7 @@ class DriveServicerThread(threading.Thread):
         print "  BX=%04X" % self.get_word("bx")
         print "  CX=%04X" % self.get_word("cx")
         print "  DX=%04X" % self.get_word("dx")
-        print "  sec_num=%04X" % self.get_word("sec_num")
+        print "  sec_num=%04X" % self.get_byte("sec_num")  # TODO: get_byte
 
     def dump_reply(self):
         print "Reply:"
@@ -166,7 +169,7 @@ class DriveServicerThread(threading.Thread):
         print "  DX=%04X" % self.get_word("ret_dx")
 
     def chs_to_block(self, cyl, head, sector):
-        block = (cyl * self.num_head + head) * self.num_sector * (sector - 1)
+        block = (cyl * self.num_head + head) * self.num_sec + (sector - 1)
         return block
 
     def handle_read(self):
@@ -176,11 +179,14 @@ class DriveServicerThread(threading.Thread):
         sector = cx & 0xFF
         head = dx >> 8
 
-        block = self.chs_to_block(cyl, head, sector) + self.read_word("sec_num")
+        block = self.chs_to_block(cyl, head, sector) + self.get_byte("sec_num")  # TODO: get_word
+
+        print "c/h/s %d/%d/%d block %d" % (cyl, head, sector, block)
+
         self.image_file.seek(block * 512)
         buf = self.image_file.read(512)
 
-        self.set_bytes("secbut", buf, 512)
+        self.set_bytes("secbuf", buf, 512)
         self.set_word("ret_ax", 0x0001)
 
     def handle_write(self):
@@ -211,7 +217,7 @@ class DriveServicerThread(threading.Thread):
     def handle_read_size(self):
         ax = self.drive_type << 8
 
-        size = self.num_heads * self.num_cyl * self.num_sectors
+        size = self.num_heads * self.num_cyl * self.num_sec
 
         self.set_word("ret_cx", size >> 16)
         self.set_word("ret_dx", size & 0xFFFF)
