@@ -2,7 +2,7 @@ import argparse
 import threading
 import time
 
-from dpmem import DualPortMemory
+from dpmem_direct import DualPortMemory
 
 SHARED_FMT = """
         .secbuf     resb 512
@@ -98,7 +98,7 @@ class DriveServicerThread(threading.Thread):
 
         self.mem = mem
         self.image_name = image_name
-        self.image_file = open(image_name, "rb")
+        self.image_file = open(image_name, "r+b")
 
         self.config_disk(144)
 
@@ -150,8 +150,11 @@ class DriveServicerThread(threading.Thread):
 
     def set_bytes(self, name, bytes, count):
         offset = self.shared_offsets[name]
-        for i in range(0, count):
-            self.mem.write(offset+i, ord(bytes[i]))
+        self.mem.write_block(offset, bytes, count)
+
+    def get_bytes(self, name, count):
+        offset = self.shared_offsets[name]
+        return self.mem.read_block(offset, count)
 
     def dump_request(self):
         print "Request:"
@@ -159,7 +162,7 @@ class DriveServicerThread(threading.Thread):
         print "  BX=%04X" % self.get_word("bx")
         print "  CX=%04X" % self.get_word("cx")
         print "  DX=%04X" % self.get_word("dx")
-        print "  sec_num=%04X" % self.get_byte("sec_num")  # TODO: get_byte
+        print "  sec_num=%04X" % self.get_word("sec_num")
 
     def dump_reply(self):
         print "Reply:"
@@ -179,7 +182,7 @@ class DriveServicerThread(threading.Thread):
         sector = cx & 0xFF
         head = dx >> 8
 
-        block = self.chs_to_block(cyl, head, sector) + self.get_byte("sec_num")  # TODO: get_word
+        block = self.chs_to_block(cyl, head, sector) + self.get_word("sec_num")
 
         print "c/h/s %d/%d/%d block %d" % (cyl, head, sector, block)
 
@@ -190,7 +193,21 @@ class DriveServicerThread(threading.Thread):
         self.set_word("ret_ax", 0x0001)
 
     def handle_write(self):
-        self.set_word("ret_ax", 0x0100)
+        cx = self.get_word("cx")
+        dx = self.get_word("dx")
+        cyl = cx >> 8
+        sector = cx & 0xFF
+        head = dx >> 8
+
+        block = self.chs_to_block(cyl, head, sector) + self.get_word("sec_num")
+
+        print "c/h/s %d/%d/%d block %d" % (cyl, head, sector, block)
+
+        buf = self.get_bytes("secbuf", 512)
+        self.image_file.seek(block * 512)
+        self.image_file.write(buf)
+
+        self.set_word("ret_ax", 0x0001)
 
     def handle_read_params(self):
         ret_dx = ((self.num_head-1) << 8) | 0

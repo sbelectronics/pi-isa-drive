@@ -1,72 +1,76 @@
 import string
 import sys
 import time
-import RPi.GPIO as IO
+import wiringpi
 
 from dpmem_common import *
 
-class DualPortMemoryGPIO:
+WPI_IN = 0
+WPI_OUT = 1
+
+class DualPortMemory():
   def __init__(self):
-      IO.setmode(IO.BCM)
+      wiringpi.wiringPiSetupGpio()
       for addrpin in DP_ADDRPINS:
-          IO.setup(addrpin, IO.OUT)
-  
+          wiringpi.pinMode(addrpin, WPI_OUT)
+
       for datapin in DP_DATAPINS:
-          IO.setup(datapin, IO.IN)
+          wiringpi.pinMode(datapin, WPI_IN)
 
       for controlpin in DP_CONTROLPINS:
-          IO.setup(controlpin, IO.OUT)
+          wiringpi.pinMode(controlpin, WPI_OUT)
 
-      IO.setup(DP_INTR, IO.IN, pull_up_down=IO.PUD_UP)
+      wiringpi.pinMode(DP_INTR, WPI_IN)
+      wiringpi.pullUpDnControl(DP_INTR, 2)
 
-      IO.output(DP_W, 1)
-      IO.output(DP_R, 1)
-      IO.output(DP_CE, 1)
+      wiringpi.digitalWrite(DP_W, 1)
+      wiringpi.digitalWrite(DP_R, 1)
+      wiringpi.digitalWrite(DP_CE, 1)
 
   def read(self, addr):
       try:
           for pin in DP_DATAPINS:
-              IO.setup(pin, IO.IN)
+              wiringpi.pinMode(pin, WPI_IN)
 
           for pin in DP_ADDRPINS:
-              IO.output(pin, addr & 1)
+              wiringpi.digitalWrite(pin, addr & 1)
               addr = addr >> 1
 
-          IO.output(DP_CE, 0)
-          IO.output(DP_R, 0)
+          wiringpi.digitalWrite(DP_CE, 0)
+          wiringpi.digitalWrite(CP_R, 0)
 
           val=0
           for pin in reversed(DP_DATAPINS):
               val=val<<1
-              val = val | IO.input(pin)
+              val = val | wiringpi.digitalRead(pin)
       finally:
-          IO.output(DP_R, 1)
-          IO.output(DP_CE, 1)
+          wiringpi.digitalWrite(DP_R, 1)
+          wiringpi.digitalWrite(DP_CE, 1)
 
       return val
 
   def write(self, addr, val):
       try:
           for pin in DP_DATAPINS:
-              IO.setup(pin, IO.OUT)
+              wiringpi.pinMode(pin, WPI_OUT)
 
           for pin in DP_ADDRPINS:
-              IO.output(pin, addr & 1)
+              wiringpi.digitalWrite(pin, addr & 1)
               addr = addr >> 1
 
-          IO.output(DP_CE, 0)
-          IO.output(DP_W, 0)
+          wiringpi.digitalWrite(DP_CE, 0)
+          wiringpi.digitalWrite(DP_W, 0)
 
           for pin in DP_DATAPINS:
-              IO.output(pin, val & 1)
+              wiringpi.digitalWrite(pin, val & 1)
               val = val >> 1
       finally:
-          IO.output(DP_W, 1)
-          IO.output(DP_CE, 1)
+          wiringpi.digitalWrite(DP_W, 1)
+          wiringpi.digitalWrite(DP_CE, 1)
 
       return val
 
-  def write_blcok(self, addr, data, count):
+  def write_block(self, addr, data, count):
       for i in range(0, count):
           self.mem.write(addr+i, ord(data[i]))
 
@@ -77,7 +81,7 @@ class DualPortMemoryGPIO:
       return bytes
 
   def get_interrupt(self):
-      return IO.input(DP_INTR) == 0
+      return wiringpi.digitalRead(DP_INTR) == 0
 
   def clear_interrupt(self):
       self.read(0x3FF)
