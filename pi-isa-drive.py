@@ -47,7 +47,8 @@ def parse_args():
 
     defs = {"image_name": "images/dos331_krynn.img",
             "fail": False,
-            "bios": False}
+            "bios": False,
+            "bios_drive_num": None}
 
     _help = 'Image name (default: %s)' % defs['image_name']
     parser.add_argument(
@@ -67,6 +68,17 @@ def parse_args():
         default=defs['bios'],
         help=_help)
 
+    _help = 'Set drive number, only usable with --bios (default: %s)' % defs['bios_drive_num']
+    parser.add_argument(
+        '-d', '--drive', dest='bios_drive_num', action='store', type=int,
+        default=defs['bios_drive_num'],
+        help=_help)
+
+    _help = 'Verbosity, use option multiple times to increase'
+    parser.add_argument(
+        '-v', '--verbose', dest='verbose', action='count',
+        default=0,
+        help=_help)
 
     args = parser.parse_args()
 
@@ -108,12 +120,13 @@ def asm_struct(x):
 
 class DriveServicerThread(threading.Thread):
 
-    def __init__(self, mem, image_name):
+    def __init__(self, mem, image_name, verbose):
         super(DriveServicerThread, self).__init__()
 
         self.mem = mem
         self.image_name = image_name
         self.image_file = open(image_name, "r+b")
+        self.verbose = verbose
 
         self.config_disk(144)
 
@@ -202,7 +215,8 @@ class DriveServicerThread(threading.Thread):
 
         block = self.chs_to_block(cyl, head, sector) + blockoffs/512
 
-        print "c/h/s %d/%d/%d block %d ofs %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
+        if self.verbose>=1:
+            print "read c/h/s %d/%d/%d block %d ofs %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
 
         self.image_file.seek(block * 512 + blockoffs % 512)
         buf = self.image_file.read(buf_size)
@@ -222,7 +236,8 @@ class DriveServicerThread(threading.Thread):
 
         block = self.chs_to_block(cyl, head, sector) + blockoffs/512
 
-        print "c/h/s %d/%d/%d block %d offset %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
+        if self.verbose>=1:
+           print "write c/h/s %d/%d/%d block %d offset %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
 
         buf = self.get_bytes("secbuf", buf_size)
         self.image_file.seek(block * 512 + blockoffs % 512)
@@ -234,6 +249,19 @@ class DriveServicerThread(threading.Thread):
         ret_dx = ((self.num_head-1) << 8) | 1
         ret_cx = (((self.num_cyl-1) & 0xFF ) << 8) | (((self.num_cyl-1) & 0x300) >> 8) | self.num_sec
         ret_bx = self.get_word("bx") & 0xFF00 | self.floppy_type
+
+        """
+        hdd param table
+        self.set_word("dpt_head_unload", self.num_cyl)   # wMaxCyls
+        self.set_byte("dpt_motor_wait", self.num_head)   # bMaxHeads
+        self.set_word("dpt_bytes_sec", 0)                # wRWCyl
+        self.set_word("dpt_gap", 0)                      # wWPCyl
+        self.set_word("dpt_data_len", 0)                 # bECCLen
+        self.set_word("dpt_fill_byte", 0)                # rOptFlags
+        self.set_word("dpt_head_sett", 100)              # bTimeOutStd
+        self.set_word("dpt_motor_st", 100)               # bTimeOutFmt
+        #self.set_word("dpt_unused", 100)                 # bTimeOutChk
+        """
 
         self.set_byte("dpt_head_unload", 0) # 191) # 0)
         self.set_byte("dpt_head_load", 1) # 2) # 1)
@@ -257,12 +285,19 @@ class DriveServicerThread(threading.Thread):
 
         size = self.num_head * self.num_cyl * self.num_sec
 
-        self.set_word("ret_cx", size >> 16)
-        self.set_word("ret_dx", size & 0xFFFF)
+        if (self.drive_type in [1,2]):
+            # floppy -- all hell breaks loose if we mess with cx and dx, so leave them unchanged
+            self.set_word("ret_cx", self.get_word("cx")) # size >> 16)
+            self.set_word("ret_dx", self.get_word("dx")) # size & 0xFFFF)
+        else:
+            # hard disk -- cx:dx is size
+            self.set_word("ret_cx", size >> 16)
+            self.set_word("ret_dx", size & 0xFFFF)
         self.set_word("ret_ax", ax)
 
     def handle_interrupt(self):
-        #self.dump_request()
+        if self.verbose>=2:
+            self.dump_request()
 
         ah = self.get_word("ax") >> 8
         if (ah == 0x02):
@@ -275,7 +310,10 @@ class DriveServicerThread(threading.Thread):
             self.handle_read_size()
         else:
             self.set_word("ret_ax", 0x0100)
-        #self.dump_reply()
+
+        if self.verbose>=2:
+            self.dump_reply()
+
         self.inc_byte("mbox_left")
 
     def run(self):
@@ -286,16 +324,36 @@ class DriveServicerThread(threading.Thread):
             else:
                 time.sleep(0.0001)
 
+def patch_bios(data, drive_num):
+    romvar_sig = "RVAR"+chr(0)
+    romvar_index = data.index(romvar_sig) + len(romvar_sig)
+
+    data = bytearray(data)
+
+    if drive_num is not None:
+        data[romvar_index] = drive_num
+
+    cksum = 0
+    for i in range(0, len(data)-1):
+        cksum = cksum + data[i]
+
+    chksum = cksum & 0xFF
+    data[-1] = 256-chksum
+
+    return str(data)
+
 def main():
     args = parse_args()
 
     mem = DualPortMemory()
 
     servicer = DriveServicerThread(mem = mem,
-                                   image_name = args.image_name)
+                                   image_name = args.image_name,
+                                   verbose = args.verbose)
 
     if args.bios:
         bootimage = open("driver/pidrive.bin", "rb").read()
+        bootimage = patch_bios(bootimage, args.bios_drive_num)
         servicer.set_bytes("junk", bootimage, len(bootimage))
     else:
         servicer.set_bytes("junk", "no_boot_image", len("no_boot_image"))
@@ -304,6 +362,11 @@ def main():
         servicer.set_byte("ret_ax", 0x0100)
         servicer.inc_byte("mbox_left")
         return
+
+    print "Image = ", servicer.image_name
+    print "Cylinders =", servicer.num_cyl, "Heads =", servicer.num_head, "Sectors =", servicer.num_sec, "Size =", \
+          servicer.num_cyl*servicer.num_head*servicer.num_sec*512/1024, "KB"
+    print "Servicing Requests..."
 
     servicer.run()
 

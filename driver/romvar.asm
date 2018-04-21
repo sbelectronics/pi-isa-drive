@@ -5,14 +5,7 @@
 
                 ALIGN   2
 
-romvar_sig      DB      "PIDRIVE_ROM_VARS",0
-
-;; Hardware information. Where to find the page register and page frame. This
-;; needs to match the dipswitch settings on the PCB.
-
-default_shared_seg EQU    0E000h
-
-shared_seg	    DW      default_shared_seg
+romvar_sig      DB      "RVAR",0
 
 ;; Drive number. This is the drive the int13 handler will intercept.
 ;;   0 = first floppy
@@ -21,6 +14,12 @@ shared_seg	    DW      default_shared_seg
 ;;   81h = second hdd
 
 drive_num       DB      0h        ; first floppy
+
+;; Hardware information. Where to find the page register and page frame. This
+;; needs to match the dipswitch settings on the PCB.
+
+default_shared_seg EQU    0E000h
+shared_seg	    DW      default_shared_seg
 
 
 
