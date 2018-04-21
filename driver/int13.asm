@@ -55,7 +55,7 @@ int13_handler:
         XOR     BX, BX
         MOV     BL, AH
         SHL     BX, 1
-        CMP     AH, 25h
+        CMP     AH, 15h
         JA      unsupported_function
         JMP     [cs:bx+int13_jumptable]
 
@@ -75,24 +75,6 @@ iret_fuss_with_carry_flag:
         MOV     BP, SP
         OR      BYTE [BP+6], 1
         POP     BP
-        IRET
-
-iret_fuss_with_carry_flag_old:
-        ;; Since IRET will restore the carry flag, tamper with the stack to
-        ;; set the carry flag to what we want.
-        JC .carryset
-        ADD SP, 4                      ; skip over CS and IP
-        POPF
-        CLC
-        PUSHF
-        SUB SP, 4
-        IRET
-.carryset:
-        ADD SP, 4                      ; skip over CS and IP
-        POPF
-        STC
-        PUSHF
-        SUB SP, 4
         IRET
 
 int13_error_return:
@@ -167,28 +149,5 @@ int13_jumptable:
         dw      unsupported_function                                                     ; 13h, Drive Diagnostic (XT)
         dw      unsupported_function                                                     ; 14h, Controller Internal Diagnostic (All)
         dw      AH15h_HandlerForReadDiskDriveSize                                       ; 15h, Read Disk Drive Size (AT+)
-        dw      unsupported_function                                                     ; 16h,
-        dw      unsupported_function                                                     ; 17h,
-        dw      unsupported_function                                                     ; 18h,
-        dw      unsupported_function                                                     ; 19h, Park Heads (PS/2)
-        dw      unsupported_function                                                     ; 1Ah, Format ESDI Drive (PS/2)
-        dw      unsupported_function                                                     ; 1Bh, Get ESDI Manufacturing Header (PS/2)
-        dw      unsupported_function                                                     ; 1Ch, ESDI Special Functions (PS/2)
-        dw      unsupported_function                                                     ; 1Dh,
-        dw      unsupported_function                                                     ; 1Eh,
-        dw      unsupported_function                                                     ; 1Fh,
-        dw      unsupported_function                                                     ; 20h,
-        dw      unsupported_function                                                     ; 21h, Read Disk Sectors, Multiple Blocks (PS/1)
-        dw      unsupported_function                                                     ; 22h, Write Disk Sectors, Multiple Blocks (PS/1)
-        dw      AH23h_HandlerForSetControllerFeatures                                   ; 23h, Set Controller Features Register (PS/1)
-        dw      AH24h_HandlerForSetMultipleBlocks                                       ; 24h, Set Multiple Blocks (PS/1)
-        dw      AH25h_HandlerForGetDriveInformation                                     ; 25h, Get Drive Information (PS/1)
 
-
-debug1  DB      'enter AX: $'
-debug2  DB      'success exit AX: $'
-debug3  DB      'success2 exit AX: $'
-debug4  DB      'error exit AX: $'
-debug5  DB      ' CX: $'
-debug6  DB      ' DX: $'
 

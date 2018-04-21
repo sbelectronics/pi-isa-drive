@@ -30,6 +30,10 @@ AH2h_HandlerForReadDiskSectors:
         MOV     BH, 0
         MOV     BL, AL                 ; BX = number of sectors to transfer
 
+%ifdef halfxfer
+        SHL     BX, 1
+%endif
+
 .next_sector:
         MOV     AH, 02                 ; in case AH is overwritten, make sure it is set to function number
         CALL    call_pi
@@ -37,7 +41,7 @@ AH2h_HandlerForReadDiskSectors:
         PUSH    CX
         MOV     SI, RAMVARS.secbuf
         CLD                            ; clear direction flag
-        MOV     CX, 0100h              ; copy 512 bytes
+        MOV     CX, secbuf_size_words  ; copy 512 bytes
         REP     MOVSW
         POP     CX
 
@@ -63,7 +67,7 @@ AH3h_HandlerForWriteDiskSectors:
         PUSH    SI
         PUSH    DI
 
-        MOV     DI, BX                 ; ES:DI = destination
+        MOV     SI, BX                 ; :SI = source
 
         ; DS is already RAMVARS segment
 
@@ -72,25 +76,27 @@ AH3h_HandlerForWriteDiskSectors:
         MOV     BH, 0
         MOV     BL, AL                 ; BX = number of sectors to transfer
 
+%ifdef halfxfer
+        SHL     BX, 1
+%endif
+
 .next_sector:
-        MOV     SI, RAMVARS.secbuf
+        MOV     DI, RAMVARS.secbuf     ; :DI = destination
 
         PUSH    CX
-        PUSH    DS                     ; swap ES:DI and DS:SI
+        PUSH    DS                     ; swap ES and DS
         PUSH    ES
         POP     DS
-        POP     ES
-        XCHG    SI, DI
+        POP     ES                     ; DS:SI=caller buffer, ES:DI=RAMVARS.secbuf
 
         CLD                            ; clear direction flag
-        MOV     CX, 0100h              ; copy 512 bytes
+        MOV     CX, secbuf_size_words  ; copy 512 bytes
         REP     MOVSW
 
-        XCHG    SI, DI
-        PUSH    DS                     ; swap ES:DI and DS:SI
+        PUSH    DS                     ; swap ES and DS
         PUSH    ES
         POP     DS
-        POP     ES
+        POP     ES                     ; DS = RAMVARS, ES:DI=caller buffer
         POP     CX
 
         MOV     AH, 03                 ; in case AH is overwritten, make sure it is set to function number
@@ -150,18 +156,6 @@ AH15h_HandlerForReadDiskDriveSize:
         MOV     DX, [DS:RAMVARS.ret_dx]
 
         JMP     int13_success_return_zero
-
-AH23h_HandlerForSetControllerFeatures:
-        MOV     AH, 1h
-        JMP     int13_error_return
-
-AH24h_HandlerForSetMultipleBlocks:
-        MOV     AH, 1h
-        JMP     int13_error_return
-
-AH25h_HandlerForGetDriveInformation:
-        MOV     AH, 1h
-        JMP     int13_error_return
 
 call_pi:
         ; Make a call to the raspberry pi:

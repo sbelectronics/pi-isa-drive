@@ -24,9 +24,13 @@ class DualPortMemory():
       wiringpi.pinMode(DP_INTR, WPI_IN)
       wiringpi.pullUpDnControl(DP_INTR, 2)
 
+      wiringpi.pinMode(ISA_RESET, WPI_OUT)
+
       wiringpi.digitalWrite(DP_W, 1)
       wiringpi.digitalWrite(DP_R, 1)
       wiringpi.digitalWrite(DP_CE, 1)
+
+      wiringpi.digitalWrite(ISA_RESET, 0)
 
   def read(self, addr):
       return dpmem_direct_ext.read_byte(addr)
@@ -75,6 +79,12 @@ class DualPortMemory():
 
   def clear_interrupt(self):
       self.read(0x3FF)
+
+  def toggle_reset(self):
+      wiringpi.digitalWrite(ISA_RESET, 1)
+      time.sleep(0.1)
+      wiringpi.digitalWrite(ISA_RESET, 0)
+
 
 def str_to_int(val):
     if "x" in val:

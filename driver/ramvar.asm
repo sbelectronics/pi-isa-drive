@@ -10,8 +10,21 @@ find_ramvars_dos:
         POP    AX
         RET
 
+find_ramvars_bios:
+        PUSH   CS
+        POP    DS
+        RET
+
 struc   RAMVARS
+
+        ;; if halfxfer is defined, then we transfer 256 bytes at a time instead of 512
+%ifdef  halfxfer
+        .junk       resb 732
+        .secbuf     resb 256
+%else
+        .junk       resb 476
         .secbuf     resb 512
+%endif
 
         .int13_old  resb 4
         .last_ah    resb 1
@@ -40,7 +53,6 @@ struc   RAMVARS
         .dpt_head_sett   resb 1
         .dpt_motor_st    resb 1
 
-        .junk       resb 476
         .mbox_left  resb 1
         .mbox_right resb 1                  ; must be at 3FFh
 endstruc

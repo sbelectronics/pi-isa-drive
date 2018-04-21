@@ -5,7 +5,11 @@ import time
 from dpmem_direct import DualPortMemory
 
 SHARED_FMT = """
-        .secbuf     resb 512
+#        .junk       resb 476
+#        .secbuf     resb 512
+
+        .junk       resb 732
+        .secbuf     resb 256
 
         .int13_old  resb 4
         .last_ah    resb 1
@@ -34,7 +38,6 @@ SHARED_FMT = """
         .dpt_head_sett   resb 1
         .dpt_motor_st    resb 1
 
-        .junk       resb 476
         .mbox_left  resb 1
         .mbox_right resb 1                  ; must be at 3FFh
 """
@@ -43,7 +46,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     defs = {"image_name": "images/dos331_krynn.img",
-            "fail": False}
+            "fail": False,
+            "bios": False}
 
     _help = 'Image name (default: %s)' % defs['image_name']
     parser.add_argument(
@@ -57,6 +61,13 @@ def parse_args():
         default=defs['fail'],
         help=_help)
 
+    _help = 'Install bios extension (default: %s)' % defs['bios']
+    parser.add_argument(
+        '-b', '--bios', dest='bios', action='store_true',
+        default=defs['bios'],
+        help=_help)
+
+
     args = parser.parse_args()
 
     return args
@@ -64,11 +75,14 @@ def parse_args():
 def asm_struct(x):
     total_count = 0
     offsets = {}
+    sizes = {}
     fields = []
     fmt = "<"
     for line in x.split("\n"):
         line = line.strip()
         if not line:
+            continue
+        if line.startswith("#") or line.startswith(";"):
             continue
         parts = line.split()
         if len(parts)<3:
@@ -77,6 +91,7 @@ def asm_struct(x):
             continue
         name = parts[0].lstrip(".")
         byte_count = int(parts[2])
+        sizes[name] = byte_count
         offsets[name] = total_count
         if (byte_count == "1"):
             fmt = fmt + "B"
@@ -88,7 +103,7 @@ def asm_struct(x):
             fmt = fmt + "%dx" % byte_count
         total_count=total_count+byte_count
 
-    return (fmt, fields, total_count, offsets)
+    return (fmt, fields, total_count, offsets, sizes)
 
 
 class DriveServicerThread(threading.Thread):
@@ -102,7 +117,7 @@ class DriveServicerThread(threading.Thread):
 
         self.config_disk(144)
 
-        (self.shared_fmt, self.shared_fields, self.shared_length, self.shared_offsets) = asm_struct(SHARED_FMT)
+        (self.shared_fmt, self.shared_fields, self.shared_length, self.shared_offsets, self.shared_sizes) = asm_struct(SHARED_FMT)
 
         self.daemon = True
 
@@ -145,8 +160,8 @@ class DriveServicerThread(threading.Thread):
         return h<<8 | l
 
     def set_word(self,name,value):
-        l = self.mem.write(self.shared_offsets[name], value ^ 0xFF)
-        h = self.mem.write(self.shared_offsets[name] +1, value >> 8)
+        self.mem.write(self.shared_offsets[name], value & 0xFF)
+        self.mem.write(self.shared_offsets[name] +1, value >> 8)
 
     def set_bytes(self, name, bytes, count):
         offset = self.shared_offsets[name]
@@ -182,14 +197,17 @@ class DriveServicerThread(threading.Thread):
         sector = cx & 0xFF
         head = dx >> 8
 
-        block = self.chs_to_block(cyl, head, sector) + self.get_word("sec_num")
+        buf_size = self.shared_sizes["secbuf"]
+        blockoffs = self.get_word("sec_num") * buf_size
 
-        print "c/h/s %d/%d/%d block %d" % (cyl, head, sector, block)
+        block = self.chs_to_block(cyl, head, sector) + blockoffs/512
 
-        self.image_file.seek(block * 512)
-        buf = self.image_file.read(512)
+        print "c/h/s %d/%d/%d block %d ofs %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
 
-        self.set_bytes("secbuf", buf, 512)
+        self.image_file.seek(block * 512 + blockoffs % 512)
+        buf = self.image_file.read(buf_size)
+
+        self.set_bytes("secbuf", buf, buf_size)
         self.set_word("ret_ax", 0x0001)
 
     def handle_write(self):
@@ -199,32 +217,35 @@ class DriveServicerThread(threading.Thread):
         sector = cx & 0xFF
         head = dx >> 8
 
-        block = self.chs_to_block(cyl, head, sector) + self.get_word("sec_num")
+        buf_size = self.shared_sizes["secbuf"]
+        blockoffs = self.get_word("sec_num") * buf_size
 
-        print "c/h/s %d/%d/%d block %d" % (cyl, head, sector, block)
+        block = self.chs_to_block(cyl, head, sector) + blockoffs/512
 
-        buf = self.get_bytes("secbuf", 512)
-        self.image_file.seek(block * 512)
+        print "c/h/s %d/%d/%d block %d offset %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
+
+        buf = self.get_bytes("secbuf", buf_size)
+        self.image_file.seek(block * 512 + blockoffs % 512)
         self.image_file.write(buf)
 
         self.set_word("ret_ax", 0x0001)
 
     def handle_read_params(self):
-        ret_dx = ((self.num_head-1) << 8) | 0
-        ret_cx = ((self.num_cyl-1) << 6) | self.num_sector
+        ret_dx = ((self.num_head-1) << 8) | 1
+        ret_cx = (((self.num_cyl-1) & 0xFF ) << 8) | (((self.num_cyl-1) & 0x300) >> 8) | self.num_sec
         ret_bx = self.get_word("bx") & 0xFF00 | self.floppy_type
 
-        self.set_byte("head_unload", 0)
-        self.set_byte("head_load", 1)
-        self.set_byte("motor_wait", 0)
-        self.set_byte("bytes_sec", 2)
-        self.set_byte("sec_trk", 9)
-        self.set_byte("gap", 0)
-        self.set_byte("data_len", 0x0FF)
-        self.set_byte("gap_len_f", 0)
-        self.set_byte("fill_byte", 0xF6)
-        self.set_byte("head_sett", 0)
-        self.set_byte("motor_st", 0)
+        self.set_byte("dpt_head_unload", 0) # 191) # 0)
+        self.set_byte("dpt_head_load", 1) # 2) # 1)
+        self.set_byte("dpt_motor_wait", 0) # 37) # 0)
+        self.set_byte("dpt_bytes_sec", 2)
+        self.set_byte("dpt_sec_trk", self.num_sec)
+        self.set_byte("dpt_gap", 0) # 27) # 0)
+        self.set_byte("dpt_data_len", 0x0FF)
+        self.set_byte("dpt_gap_len_f", 0) # 108) # 0)
+        self.set_byte("dpt_fill_byte", 0xF6)
+        self.set_byte("dpt_head_sett", 0) # 15) # 0)
+        self.set_byte("dpt_motor_st", 0) # 8) # 0)
 
         self.set_word("ret_ax", 0x0000)
         self.set_word("ret_bx", ret_bx)
@@ -234,14 +255,14 @@ class DriveServicerThread(threading.Thread):
     def handle_read_size(self):
         ax = self.drive_type << 8
 
-        size = self.num_heads * self.num_cyl * self.num_sec
+        size = self.num_head * self.num_cyl * self.num_sec
 
         self.set_word("ret_cx", size >> 16)
         self.set_word("ret_dx", size & 0xFFFF)
         self.set_word("ret_ax", ax)
 
     def handle_interrupt(self):
-        self.dump_request()
+        #self.dump_request()
 
         ah = self.get_word("ax") >> 8
         if (ah == 0x02):
@@ -254,7 +275,7 @@ class DriveServicerThread(threading.Thread):
             self.handle_read_size()
         else:
             self.set_word("ret_ax", 0x0100)
-        self.dump_reply()
+        #self.dump_reply()
         self.inc_byte("mbox_left")
 
     def run(self):
@@ -272,6 +293,12 @@ def main():
 
     servicer = DriveServicerThread(mem = mem,
                                    image_name = args.image_name)
+
+    if args.bios:
+        bootimage = open("driver/pidrive.bin", "rb").read()
+        servicer.set_bytes("junk", bootimage, len(bootimage))
+    else:
+        servicer.set_bytes("junk", "no_boot_image", len("no_boot_image"))
 
     if args.fail:
         servicer.set_byte("ret_ax", 0x0100)
