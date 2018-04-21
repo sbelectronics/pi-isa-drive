@@ -39,7 +39,7 @@ AH2h_HandlerForReadDiskSectors:
         CALL    call_pi
 
         PUSH    CX
-        MOV     SI, RAMVARS.secbuf
+        MOV     SI, secbuf_offset
         CLD                            ; clear direction flag
         MOV     CX, secbuf_size_words  ; copy 512 bytes
         REP     MOVSW
@@ -81,7 +81,7 @@ AH3h_HandlerForWriteDiskSectors:
 %endif
 
 .next_sector:
-        MOV     DI, RAMVARS.secbuf     ; :DI = destination
+        MOV     DI, secbuf_offset      ; :DI = destination
 
         PUSH    CX
         PUSH    DS                     ; swap ES and DS

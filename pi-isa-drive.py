@@ -5,14 +5,14 @@ import time
 from dpmem_direct import DualPortMemory
 
 SHARED_FMT = """
-#        .junk       resb 476
-#        .secbuf     resb 512
-
-        .junk       resb 732
-        .secbuf     resb 256
+        .junk       resb 474
+        .secbuf_large     resb 256
+        .secbuf_small     resb 256
 
         .int13_old  resb 4
         .last_ah    resb 1
+        
+        .secbuf_size_words resb 2
 
         .ax         resb 2
         .bx         resb 2
@@ -41,6 +41,9 @@ SHARED_FMT = """
         .mbox_left  resb 1
         .mbox_right resb 1                  ; must be at 3FFh
 """
+
+SECBUF_NAME = {512: "secbuf_large",
+               256: "secbuf_small"}
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -210,18 +213,19 @@ class DriveServicerThread(threading.Thread):
         sector = cx & 0xFF
         head = dx >> 8
 
-        buf_size = self.shared_sizes["secbuf"]
-        blockoffs = self.get_word("sec_num") * buf_size
+        secbuf_size = self.get_word("secbuf_size_words") * 2
+        secbuf_name = SECBUF_NAME[secbuf_size]
+        blockoffs = self.get_word("sec_num") * secbuf_size
 
         block = self.chs_to_block(cyl, head, sector) + blockoffs/512
 
         if self.verbose>=1:
-            print "read c/h/s %d/%d/%d block %d ofs %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
+            print "read c/h/s %d/%d/%d block %d ofs %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, secbuf_size)
 
         self.image_file.seek(block * 512 + blockoffs % 512)
-        buf = self.image_file.read(buf_size)
+        buf = self.image_file.read(secbuf_size)
 
-        self.set_bytes("secbuf", buf, buf_size)
+        self.set_bytes(secbuf_name, buf, secbuf_size)
         self.set_word("ret_ax", 0x0001)
 
     def handle_write(self):
@@ -231,15 +235,16 @@ class DriveServicerThread(threading.Thread):
         sector = cx & 0xFF
         head = dx >> 8
 
-        buf_size = self.shared_sizes["secbuf"]
-        blockoffs = self.get_word("sec_num") * buf_size
+        secbuf_size = self.get_word("secbuf_size_words") * 2
+        secbuf_name = SECBUF_NAME[secbuf_size]
+        blockoffs = self.get_word("sec_num") * secbuf_size
 
         block = self.chs_to_block(cyl, head, sector) + blockoffs/512
 
         if self.verbose>=1:
-           print "write c/h/s %d/%d/%d block %d offset %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, buf_size)
+           print "write c/h/s %d/%d/%d block %d offset %d bufsz %d" % (cyl, head, sector, block, blockoffs%512, secbuf_size)
 
-        buf = self.get_bytes("secbuf", buf_size)
+        buf = self.get_bytes(secbuf_name, secbuf_size)
         self.image_file.seek(block * 512 + blockoffs % 512)
         self.image_file.write(buf)
 

@@ -16,18 +16,14 @@ find_ramvars_bios:
         RET
 
 struc   RAMVARS
-
-        ;; if halfxfer is defined, then we transfer 256 bytes at a time instead of 512
-%ifdef  halfxfer
-        .junk       resb 732
-        .secbuf     resb 256
-%else
-        .junk       resb 476
-        .secbuf     resb 512
-%endif
+        .junk       resb 474
+        .secbuf_large     resb 256
+        .secbuf_small     resb 256
 
         .int13_old  resb 4
         .last_ah    resb 1
+
+        .secbuf_size_words resb 2
 
         .ax         resb 2
         .bx         resb 2

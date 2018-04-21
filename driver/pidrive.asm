@@ -29,8 +29,10 @@ find_ramvars  equ find_ramvars_bios
 
 %ifdef halfxfer
 secbuf_size_words equ 0x80
+secbuf_offset equ RAMVARS.secbuf_small
 %else
 secbuf_size_words equ 0x100
+secbuf_offset equ RAMVARS.secbuf_large
 %endif
 
 section .text
@@ -50,6 +52,8 @@ main:   PUSHF
 okay:
 
         CALL    find_ramvars
+        ;; The pi will want to know the size of the secbuf
+        MOV     [DS:RAMVARS.secbuf_size_words], WORD secbuf_size_words
 %ifndef QUIET
         CALL    banner
 %endif
