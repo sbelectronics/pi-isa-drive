@@ -52,7 +52,8 @@ def parse_args():
             "fail": False,
             "bios": False,
             "bios_drive_num": None,
-            "floppy_type": 1440}
+            "floppy_type": "1440",
+            "hard_type": None}
 
     _help = 'Image name (default: %s)' % defs['image_name']
     parser.add_argument(
@@ -80,8 +81,14 @@ def parse_args():
 
     _help = 'Set floppy type (2880,1440,1200,720,360) (default: %s)' % defs['floppy_type']
     parser.add_argument(
-        '-f', '--floppy', dest='floppy_type', action='store', type=int,
+        '-f', '--floppy', dest='floppy_type', action='store',
         default=defs['floppy_type'],
+        help=_help)
+
+    _help = 'Set hard disk type (specify cyl,head,ssec) (default: %s)' % defs['hard_type']
+    parser.add_argument(
+        '-s', '--hard', dest='hard_type', action='store',
+        default=defs['hard_type'],
         help=_help)
 
     _help = 'Verbosity, use option multiple times to increase'
@@ -130,7 +137,7 @@ def asm_struct(x):
 
 class DriveServicerThread(threading.Thread):
 
-    def __init__(self, mem, image_name, verbose, floppy_type):
+    def __init__(self, mem, image_name, verbose, floppy_type, hard_type):
         super(DriveServicerThread, self).__init__()
 
         self.mem = mem
@@ -138,7 +145,9 @@ class DriveServicerThread(threading.Thread):
         self.image_file = open(image_name, "r+b")
         self.verbose = verbose
 
-        if floppy_type is not None:
+        if hard_type is not None:
+            self.config_hard_str(hard_type)
+        elif floppy_type is not None:
             self.config_floppy(floppy_type)
 
         (self.shared_fmt, self.shared_fields, self.shared_length, self.shared_offsets, self.shared_sizes) = asm_struct(SHARED_FMT)
@@ -146,38 +155,58 @@ class DriveServicerThread(threading.Thread):
         self.daemon = True
 
     def config_floppy(self, kind):
-        if (kind==2880):
+        if (kind=="2880"):
             self.drive_type = 1
             self.floppy_type = 4
             self.num_cyl = 80
             self.num_head = 2
             self.num_sec = 36
-        elif (kind==1440):
+        elif (kind=="1440"):
             self.drive_type = 1
             self.floppy_type = 4
             self.num_cyl = 80
             self.num_head = 2
             self.num_sec = 18
-        elif (kind==1200):
+        elif (kind=="1200"):
             self.drive_type = 1
             self.floppy_type = 2
             self.num_cyl = 80
             self.num_head = 2
             self.num_sec = 15
-        elif (kind==720):
+        elif (kind=="720"):
             self.drive_type = 1
             self.floppy_type = 3
             self.num_cyl = 80
             self.num_head = 2
             self.num_sec = 9
-        elif (kind==360):
+        elif (kind=="360"):
             self.drive_type = 1
             self.floppy_type = 1
             self.num_cyl = 40
             self.num_head = 2
             self.num_sec = 9
+        elif ("," in kind):
+            parts = kind.split(",")
+            self.drive_type = 1
+            self.floppy_type =4
+            self.num_cyl = int(parts[0].strip())
+            self.num_head = int(parts[1].strip())
+            self.num_sec = int(parts[2].strip())
         else:
             raise Exception("unknown disk kind")
+
+    def config_hard(self, cyl, head, sec):
+        self.drive_type=3
+        self.floppy_type=0
+        self.num_cyl = cyl
+        self.num_head = head
+        self.num_sec = sec
+
+    def config_hard_str(self,s):
+        parts = s.split(",")
+        self.config_hard(int(parts[0].strip()),
+                         int(parts[1].strip()),
+                         int(parts[2].strip()))
 
     def get_byte(self, name):
         l = self.mem.read(self.shared_offsets[name])
@@ -278,7 +307,7 @@ class DriveServicerThread(threading.Thread):
 
     def handle_read_params(self):
         ret_dx = ((self.num_head-1) << 8) | 1
-        ret_cx = (((self.num_cyl-1) & 0xFF ) << 8) | (((self.num_cyl-1) & 0x300) >> 8) | self.num_sec
+        ret_cx = (((self.num_cyl-1) & 0xFF ) << 8) | (((self.num_cyl-1) & 0x300) >> 2) | self.num_sec
         ret_bx = self.get_word("bx") & 0xFF00 | self.floppy_type
 
         """
@@ -381,7 +410,8 @@ def main():
     servicer = DriveServicerThread(mem = mem,
                                    image_name = args.image_name,
                                    verbose = args.verbose,
-                                   floppy_type = args.floppy_type)
+                                   floppy_type = args.floppy_type,
+                                   hard_type = args.hard_type)
 
     if args.bios:
         bootimage = open("driver/pidrive.bin", "rb").read()

@@ -115,10 +115,6 @@ AH3h_HandlerForWriteDiskSectors:
         MOV     AH, 0h
         JMP     int13_success_return
 
-AH4h_HandlerForVerifyDiskSectors:
-        MOV     AH, 0h
-        JMP     int13_success_return
-
 AH8h_HandlerForReadDiskDriveParameters:
         CALL    call_pi
         MOV     AX, [DS:RAMVARS.ret_ax]
@@ -136,15 +132,7 @@ AH9h_HandlerForInitializeDriveParameters:
         MOV     AH, 0h
         JMP     int13_success_return
 
-AHCh_HandlerForSeek:
-        MOV     AH, 0h
-        JMP     int13_success_return
-
 AH10h_HandlerForCheckDriveReady:
-        MOV     AH, 0h
-        JMP     int13_success_return
-
-AH11h_HandlerForRecalibrate:
         MOV     AH, 0h
         JMP     int13_success_return
 

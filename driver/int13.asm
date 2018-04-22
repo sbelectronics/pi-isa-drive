@@ -88,6 +88,10 @@ int13_error_return:
 %endif
         JMP     iret_fuss_with_carry_flag
 
+int13_success_return_ah_0:
+        ;; Set AH to 0 and return success. Useful for things like format.
+        MOV     AH,0
+        ;; fall through
 int13_success_return:
         ;; For all functions except 8h and 15h. Error code is in AH.
         MOV     [RAMVARS.last_ah], ah
@@ -131,20 +135,20 @@ int13_jumptable:
         dw      AH1h_HandlerForReadDiskStatus                           ; 01h, Read Disk Status (All)
         dw      AH2h_HandlerForReadDiskSectors                          ; 02h, Read Disk Sectors (All)
         dw      AH3h_HandlerForWriteDiskSectors                         ; 03h, Write Disk Sectors (All)
-        dw      AH4h_HandlerForVerifyDiskSectors                        ; 04h, Verify Disk Sectors (All)
-        dw      unsupported_function                                                     ; 05h, Format Disk Track (XT, AT, EISA)
-        dw      unsupported_function                                                     ; 06h, Format Disk Track with Bad Sectors (XT)
-        dw      unsupported_function                                                     ; 07h, Format Multiple Cylinders (XT)
+        dw      int13_success_return_ah_0                               ; 04h, Verify Disk Sectors (All)
+        dw      int13_success_return_ah_0                               ; 05h, Format Disk Track (XT, AT, EISA)
+        dw      unsupported_function                                    ; 06h, Format Disk Track with Bad Sectors (XT)
+        dw      unsupported_function                                    ; 07h, Format Multiple Cylinders (XT)
         dw      AH8h_HandlerForReadDiskDriveParameters                                  ; 08h, Read Disk Drive Parameters (All)
         dw      AH9h_HandlerForInitializeDriveParameters                                ; 09h, Initialize Drive Parameters (All)
         dw      unsupported_function                                                     ; 0Ah, Read Disk Sectors with ECC (XT, AT, EISA)
         dw      unsupported_function                                                     ; 0Bh, Write Disk Sectors with ECC (XT, AT, EISA)
-        dw      AHCh_HandlerForSeek                                                     ; 0Ch, Seek (All)
+        dw      int13_success_return_ah_0                               ; 0Ch, Seek (All)
         dw      AH9h_HandlerForInitializeDriveParameters                                ; 0Dh, Alternate Disk Reset (All)
         dw      unsupported_function                                                     ; 0Eh, Read Sector Buffer (XT, PS/1), ESDI Undocumented Diagnostic (PS/2)
         dw      unsupported_function                                                     ; 0Fh, Write Sector Buffer (XT, PS/1), ESDI Undocumented Diagnostic (PS/2)
         dw      AH10h_HandlerForCheckDriveReady                                         ; 10h, Check Drive Ready (All)
-        dw      AH11h_HandlerForRecalibrate                                             ; 11h, Recalibrate (All)
+        dw      int13_success_return_ah_0                               ; 11h, Recalibrate (All)
         dw      unsupported_function                                                     ; 12h, Controller RAM Diagnostic (XT)
         dw      unsupported_function                                                     ; 13h, Drive Diagnostic (XT)
         dw      unsupported_function                                                     ; 14h, Controller Internal Diagnostic (All)
