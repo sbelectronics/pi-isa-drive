@@ -12,12 +12,13 @@ cpu 8086
 ;; Uncomment the following to turn off all text output
 ;; %define QUIET
 
-;; Uncomment the following to install as a TSR, for testing of the COM file
-;; from the dos prompt.
+;; Uncomment the following to install as a TSR, so that the driver can be loaded
+;; from the DOS prompt. If not defined, will assemble as a BIOS extension.
 ;; %define DOS_COM_TSR
 
-;; Uncomment to use 256 byte transfers instead of 512
-%define halfxfer
+;; Uncomment to use 256 byte transfers instead of 512. This will automatically
+;; be selected if assembling as a BIOS extension.
+;; %define halfxfer
 
 %ifdef DOS_COM_TSR
 org 100h
@@ -25,6 +26,7 @@ find_ramvars equ find_ramvars_dos
 %else
 org 0h
 find_ramvars  equ find_ramvars_bios
+%define halfxfer
 %endif
 
 %ifdef halfxfer
@@ -44,12 +46,16 @@ start:
 
 main:   PUSHF
 
+%ifndef DOS_COM_TSR
+        ;; Since the 2K disk is mirrored at base_address+2k, the BIOS will find the extension again. When that happens
+        ;; return without doing anything.
         MOV     AX, CS
         AND     AX, 0xFF
         JZ      okay
         POPF
         RETF
 okay:
+%endif
 
         CALL    find_ramvars
         ;; The pi will want to know the size of the secbuf
