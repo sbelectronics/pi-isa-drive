@@ -51,7 +51,8 @@ def parse_args():
     defs = {"image_name": "images/dos331_krynn.img",
             "fail": False,
             "bios": False,
-            "bios_drive_num": None}
+            "bios_drive_num": None,
+            "floppy_type": 1440}
 
     _help = 'Image name (default: %s)' % defs['image_name']
     parser.add_argument(
@@ -61,7 +62,7 @@ def parse_args():
 
     _help = 'Send failure response (default: %s)' % defs['fail']
     parser.add_argument(
-        '-f', '--fail', dest='fail', action='store_true',
+        '-x', '--fail', dest='fail', action='store_true',
         default=defs['fail'],
         help=_help)
 
@@ -75,6 +76,12 @@ def parse_args():
     parser.add_argument(
         '-d', '--drive', dest='bios_drive_num', action='store', type=int,
         default=defs['bios_drive_num'],
+        help=_help)
+
+    _help = 'Set floppy type (2880,1440,1200,720,360) (default: %s)' % defs['floppy_type']
+    parser.add_argument(
+        '-f', '--floppy', dest='floppy_type', action='store', type=int,
+        default=defs['floppy_type'],
         help=_help)
 
     _help = 'Verbosity, use option multiple times to increase'
@@ -123,7 +130,7 @@ def asm_struct(x):
 
 class DriveServicerThread(threading.Thread):
 
-    def __init__(self, mem, image_name, verbose):
+    def __init__(self, mem, image_name, verbose, floppy_type):
         super(DriveServicerThread, self).__init__()
 
         self.mem = mem
@@ -131,19 +138,38 @@ class DriveServicerThread(threading.Thread):
         self.image_file = open(image_name, "r+b")
         self.verbose = verbose
 
-        self.config_disk(144)
+        if floppy_type is not None:
+            self.config_floppy(floppy_type)
 
         (self.shared_fmt, self.shared_fields, self.shared_length, self.shared_offsets, self.shared_sizes) = asm_struct(SHARED_FMT)
 
         self.daemon = True
 
-    def config_disk(self, kind):
-        if (kind==144):
+    def config_floppy(self, kind):
+        if (kind==2880):
+            self.drive_type = 1
+            self.floppy_type = 4
+            self.num_cyl = 80
+            self.num_head = 2
+            self.num_sec = 36
+        elif (kind==1440):
             self.drive_type = 1
             self.floppy_type = 4
             self.num_cyl = 80
             self.num_head = 2
             self.num_sec = 18
+        elif (kind==1200):
+            self.drive_type = 1
+            self.floppy_type = 2
+            self.num_cyl = 80
+            self.num_head = 2
+            self.num_sec = 15
+        elif (kind==720):
+            self.drive_type = 1
+            self.floppy_type = 3
+            self.num_cyl = 80
+            self.num_head = 2
+            self.num_sec = 9
         elif (kind==360):
             self.drive_type = 1
             self.floppy_type = 1
@@ -354,7 +380,8 @@ def main():
 
     servicer = DriveServicerThread(mem = mem,
                                    image_name = args.image_name,
-                                   verbose = args.verbose)
+                                   verbose = args.verbose,
+                                   floppy_type = args.floppy_type)
 
     if args.bios:
         bootimage = open("driver/pidrive.bin", "rb").read()
